@@ -1,0 +1,29 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 8e882e3dfadd3724ff8bd9e0bf6a2dc9a0910ad1..a229bef16be011ef5dd5febd385eaa95fba82f67 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -22,6 +22,6 @@ android {
+ 
+ dependencies {
+   coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+-  implementation 'org.eclipse.jgit:org.eclipse.jgit:6.2.0.202206071550-r'
++  implementation 'org.eclipse.jgit:org.eclipse.jgit:6.10.1.202505221210-r'
+   implementation "com.squareup.okhttp3:okhttp:4.12.0"
+ }
+diff --git a/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt b/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
+index c70f061d593109fbb89860c0cca6b8ba896fe551..9a4bea654db4e9617b7e6011e68fe021a5f6e720 100644
+--- a/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
++++ b/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
+@@ -137,6 +137,12 @@ internal object GitNetwork {
+         cloneCommand.setNoTags()
+       }
+ 
++      // Shallow clone: only download the newest `depth` commits. Needs JGit >= 6.3.
++      // Keeps the pack small enough for Android's heap on wikis with long histories.
++      if (depth > 0) {
++        cloneCommand.setDepth(depth)
++      }
++
+       GitTransport.applyHeaders(cloneCommand, headers)
+ 
+       val git = cloneCommand.call()

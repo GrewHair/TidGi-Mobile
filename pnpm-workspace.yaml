@@ -25,3 +25,5 @@ onlyBuiltDependencies:
   - less
   - svelte-preprocess
   - unrs-resolver
+patchedDependencies:
+  expo-tiddlywiki-filesystem-android-external-storage@2.12.3: patches/expo-tiddlywiki-filesystem-android-external-storage@2.12.3.patch
