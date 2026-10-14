@@ -21,6 +21,8 @@ export interface IGitRemote {
   token?: string;
   tokenAuthHeaderName?: string;
   tokenAuthHeaderValue?: string;
+  /** Standard Git host (GitHub, Gitea, …) rather than TidGi Desktop. */
+  useStandardGitProtocol?: boolean;
   workspaceId: string;
 }
 
@@ -91,15 +93,16 @@ const CLONE_RETRY_DELAY_MS = 3_000;
 const MAX_SAFE_PACK_BYTES = 80 * 1024 * 1024;
 const DEFAULT_TIDGI_TOKEN_AUTH_HEADER_PREFIX = 'x-tidgi-auth-token';
 const DEFAULT_TIDGI_USER_NAME = 'TidGi User';
+const STANDARD_GIT_USER_NAME = 'x-access-token';
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function isExternalPath(filepath: string): boolean {
+export function isExternalPath(filepath: string): boolean {
   const plain = toPlainPath(filepath.replace(/^file:\/(?!\/\/)/, 'file:///').replace(/^file:\/\/\//, '/'));
   return plain.startsWith('/storage/') || plain.startsWith('/sdcard/');
 }
 
-function toFileUri(plainPath: string): string {
+export function toFileUri(plainPath: string): string {
   const uri = plainPath.startsWith('file://') ? plainPath : `file://${plainPath}`;
   try {
     return encodeURI(decodeURI(uri));
@@ -113,7 +116,16 @@ function parseNativeResult<T>(json: string): T {
   return JSON.parse(json) as T;
 }
 
-function createAuthHeader(remote: Pick<IGitRemote, 'token' | 'tokenAuthHeaderName' | 'tokenAuthHeaderValue'>): Record<string, string | undefined> {
+function createAuthHeader(
+  remote: Pick<IGitRemote, 'token' | 'tokenAuthHeaderName' | 'tokenAuthHeaderValue' | 'useStandardGitProtocol'>,
+): Record<string, string | undefined> {
+  if (remote.useStandardGitProtocol === true) {
+    // Git hosts reject Basic auth with an empty user name, and must not receive
+    // the TidGi token header (its name embeds the token). Any user name works
+    // with a GitHub personal access token.
+    if (remote.token === undefined || remote.token === '') return {};
+    return { Authorization: `Basic ${Buffer.from(`${STANDARD_GIT_USER_NAME}:${remote.token}`).toString('base64')}` };
+  }
   const headers: Record<string, string | undefined> = {
     'X-Requested-With': 'TiddlyWiki',
   };
@@ -150,7 +162,7 @@ function normalizeHeaders(headers: Record<string, string | undefined>): Record<s
   return Object.fromEntries(Object.entries(headers).filter(([, value]) => value !== undefined)) as Record<string, string>;
 }
 
-export function headersForRemote(remote: Pick<IGitRemote, 'token' | 'tokenAuthHeaderName' | 'tokenAuthHeaderValue'>): Record<string, string> {
+export function headersForRemote(remote: Pick<IGitRemote, 'token' | 'tokenAuthHeaderName' | 'tokenAuthHeaderValue' | 'useStandardGitProtocol'>): Record<string, string> {
   return normalizeHeaders(createAuthHeader(remote));
 }
 
@@ -407,6 +419,7 @@ export async function gitCloneToDirectory(
   onProgress?: (phase: string, loaded: number, total: number) => void,
   options: { useStandardGitProtocol?: boolean } = {},
 ): Promise<void> {
+  if (options.useStandardGitProtocol === true) remote = { ...remote, useStandardGitProtocol: true };
   const baseUrl = remote.baseUrl.replace(/\/$/, '');
   const url = typeof remote.gitUrl === 'string' && remote.gitUrl.length > 0
     ? remote.gitUrl
