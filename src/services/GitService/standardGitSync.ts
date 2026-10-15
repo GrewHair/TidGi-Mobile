@@ -54,10 +54,7 @@ export async function syncWithStandardGit(workspace: IWikiWorkspace, options: IS
 async function commitFetchMergePush(workspace: IWikiWorkspace, directory: string, options: IStandardGitSyncOptions): Promise<boolean> {
   const { headers, log, maxAttempts = 3 } = options;
 
-  if (await gitHasChanges(workspace)) {
-    await gitCommit(workspace, `Mobile sync at ${new Date().toISOString()}`);
-    log('Standard git: local changes committed');
-  }
+  if (await commitPendingEdits(workspace)) log('Standard git: local changes committed');
   await ensureGitConfigForMobile(directory);
   await disableBackgroundAutoGc(directory);
   const branch = await getCurrentBranch(directory);
@@ -72,10 +69,17 @@ async function commitFetchMergePush(workspace: IWikiWorkspace, directory: string
     if (!fetchResult.ok) throw new Error(`git fetch failed: ${fetchResult.error ?? 'unknown'}`);
 
     const remote = await resolveReference(directory, trackingReference);
-    const head = await resolveReference(directory, 'HEAD');
+    let head = await resolveReference(directory, 'HEAD');
     if (remote === '') throw new Error(`Remote branch ${branch} not found`);
 
     if (remote !== base && head !== remote) {
+      // The wiki stays editable during a sync. A tiddler saved since the commit
+      // above would be overwritten by the remote's version below, so commit it
+      // now and let it go through the merge like any other local change.
+      if (await commitPendingEdits(workspace)) {
+        log('Standard git: edits saved during sync committed');
+        head = await resolveReference(directory, 'HEAD');
+      }
       if (head === base) {
         log(`Standard git: fast-forward ${short(head)}..${short(remote)}`);
         await moveWorkingTree(directory, head, remote);
@@ -105,6 +109,13 @@ async function commitFetchMergePush(workspace: IWikiWorkspace, directory: string
     log(`Standard git: remote moved during sync (attempt ${attempt}/${maxAttempts}), retrying`);
   }
   throw new Error(`git push kept being rejected after ${maxAttempts} attempts`);
+}
+
+/** @returns true when there were uncommitted edits, now committed. */
+async function commitPendingEdits(workspace: IWikiWorkspace): Promise<boolean> {
+  if (!(await gitHasChanges(workspace))) return false;
+  await gitCommit(workspace, `Mobile sync at ${new Date().toISOString()}`);
+  return true;
 }
 
 /**

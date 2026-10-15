@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer';
 import type { IWikiWorkspace } from '../../../store/workspace';
 import { syncWithStandardGit } from '../standardGitSync';
 
@@ -10,13 +11,28 @@ jest.mock('expo-tiddlywiki-filesystem-android-external-storage', () => ({
   toPlainPath: (path: string) => path.replace(/^file:\/\//, ''),
 }));
 
-jest.mock('expo-file-system/legacy', () => ({ EncodingType: { Base64: 'base64', UTF8: 'utf8' } }));
+/** Files the sync wrote into the working tree, by file:// URI. */
+const mockWrittenFiles = new Map<string, string>();
+
+jest.mock('expo-file-system/legacy', () => ({
+  EncodingType: { Base64: 'base64', UTF8: 'utf8' },
+  makeDirectoryAsync: jest.fn(() => Promise.resolve()),
+  writeAsStringAsync: jest.fn((uri: string, content: string) => {
+    mockWrittenFiles.set(uri, content);
+    return Promise.resolve();
+  }),
+}));
+
+const mockGit = {
+  commit: jest.fn(() => Promise.resolve()),
+  hasChanges: jest.fn(() => Promise.resolve(false)),
+};
 
 jest.mock('../index', () => ({
   ensureGitConfigForMobile: jest.fn(() => Promise.resolve()),
   getCurrentBranch: jest.fn(() => Promise.resolve('main')),
-  gitCommit: jest.fn(() => Promise.resolve()),
-  gitHasChanges: jest.fn(() => Promise.resolve(false)),
+  gitCommit: jest.fn(() => mockGit.commit()),
+  gitHasChanges: jest.fn(() => mockGit.hasChanges()),
   isExternalPath: jest.fn(() => false),
   toFileUri: (path: string) => `file://${path}`,
 }));
@@ -34,9 +50,16 @@ function setUpNoOpSync() {
   mockExternalStorage.gitSetConfig = jest.fn(() => Promise.resolve(JSON.stringify({ ok: true })));
 }
 
+function resetMocks() {
+  for (const key of Object.keys(mockExternalStorage)) mockExternalStorage[key] = undefined;
+  mockWrittenFiles.clear();
+  mockGit.commit = jest.fn(() => Promise.resolve());
+  mockGit.hasChanges = jest.fn(() => Promise.resolve(false));
+}
+
 describe('syncWithStandardGit housekeeping', () => {
   beforeEach(() => {
-    for (const key of Object.keys(mockExternalStorage)) mockExternalStorage[key] = undefined;
+    resetMocks();
     setUpNoOpSync();
   });
 
@@ -87,5 +110,52 @@ describe('syncWithStandardGit housekeeping', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('syncWithStandardGit edits saved during a sync', () => {
+  const b64 = (text: string) => Buffer.from(text, 'utf8').toString('base64');
+  const tiddler = 'tiddlers/A.tid';
+  const blobs: Record<string, string> = {
+    base: 'title: A\n\none\ntwo\nthree\n',
+    remote: 'title: A\n\none\ntwo\nTHREE from desktop\n',
+    late: 'title: A\n\nONE saved during sync\ntwo\nthree\n',
+  };
+
+  beforeEach(resetMocks);
+
+  it('commits a tiddler saved after the sync started and merges it instead of overwriting it', async () => {
+    // Refs: origin/main is "base" before the fetch and "remote" after it; HEAD follows commits.
+    const references = { head: 'base', tracking: 'base' };
+    const commits = ['late', 'merged'];
+    mockGit.commit = jest.fn(() => {
+      references.head = commits.shift() ?? 'extra';
+      return Promise.resolve();
+    });
+    // Nothing to commit when the sync starts; the user saves while it fetches.
+    mockGit.hasChanges = jest.fn<Promise<boolean>, []>().mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValue(false);
+
+    const ok = (body: object = {}) => Promise.resolve(JSON.stringify({ ok: true, ...body }));
+    mockExternalStorage.gitSetConfig = jest.fn(() => ok());
+    mockExternalStorage.gitFetch = jest.fn(() => {
+      references.tracking = 'remote';
+      return ok();
+    });
+    mockExternalStorage.gitResolveRef = jest.fn((_directory: string, reference: string) => ok({ oid: reference === 'HEAD' ? references.head : references.tracking }));
+    mockExternalStorage.gitDiffTrees = jest.fn(() => ok({ files: [{ path: tiddler, type: 'modify' }] }));
+    mockExternalStorage.gitReadBlob = jest.fn((_directory: string, reference: string) => ok({ content: b64(blobs[reference]) }));
+    mockExternalStorage.gitCheckoutChangedFiles = jest.fn(() => ok());
+    mockExternalStorage.gitReset = jest.fn(() => ok());
+    mockExternalStorage.gitPush = jest.fn(() => ok({ updates: [{ status: 'OK' }] }));
+    const log = jest.fn();
+
+    await expect(syncWithStandardGit(workspace, { headers: null, log })).resolves.toBe(true);
+
+    expect(log).toHaveBeenCalledWith('Standard git: edits saved during sync committed');
+    expect(mockExternalStorage.gitDiffTrees).toHaveBeenCalledWith('/wikis/w1', 'base', 'late');
+    const written = mockWrittenFiles.get(`file:///wikis/w1/${tiddler}`);
+    expect(written).toBeDefined();
+    expect(Buffer.from(written ?? '', 'base64').toString('utf8')).toBe('title: A\n\nONE saved during sync\ntwo\nTHREE from desktop\n');
+    expect(mockExternalStorage.gitPush).toHaveBeenCalled();
   });
 });
