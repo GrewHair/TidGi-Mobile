@@ -17,6 +17,7 @@ import { fetchHtmlSyncInfo, importHtmlWorkspace } from '../../services/HtmlWorks
 import { importBundledWikiTemplate, normalizeGitCloneUrl } from '../../services/WikiImportService';
 import { IServerInfo, useServerStore } from '../../store/server';
 import { IHtmlWorkspace, IWikiWorkspace, useWorkspaceStore } from '../../store/workspace';
+import { deriveWorkspaceIdFromGitUrl, deriveWorkspaceNameFromGitUrl, parseGitHostRepository } from '../../utils/gitHostRepository';
 import { GitQRData, ImportQRData, isHtmlQRData, isImportQRData, parseImportQRCode } from '../../utils/importQRCode';
 import { isWikiWorkspace } from '../../utils/workspaceRelations';
 import { ImporterServerConfigs } from './components/ImporterServerConfigs';
@@ -121,22 +122,6 @@ function deriveTemplateCloneUri(
   if (typeof localTemplateAsset === 'string') return undefined;
   if (!uri.startsWith('http://') && !uri.startsWith('https://')) return undefined;
   return normalizeGitCloneUrl(uri);
-}
-
-function deriveWorkspaceNameFromGitUrl(gitUrl: string): string {
-  const parsed = new URL(gitUrl);
-  const lastSegment = parsed.pathname.split('/').filter(Boolean).pop() ?? 'wiki';
-  return decodeURIComponent(lastSegment).replace(/\.git$/i, '');
-}
-
-function deriveWorkspaceIdFromGitUrl(gitUrl: string, preferredName?: string): string {
-  const baseName = preferredName ?? deriveWorkspaceNameFromGitUrl(gitUrl);
-  const slug = baseName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  const safeSlug = slug.length > 0 ? slug : 'wiki';
-  return `${safeSlug}-${Date.now().toString(36)}`;
 }
 
 export const Importer: FC<StackScreenProps<RootStackParameterList, 'Importer'>> = ({ navigation, route }) => {
@@ -268,6 +253,16 @@ export const Importer: FC<StackScreenProps<RootStackParameterList, 'Importer'>> 
       : [];
     setSelectedSubWikiIds(previous => areStringArraysEqual(previous, nextSubWorkspaceIDs) ? previous : nextSubWorkspaceIDs);
   }, []);
+
+  /** @returns false when the input is not a repository URL. */
+  const onGitHostRepositorySubmit = useCallback((repositoryUrl: string, token: string): boolean => {
+    const data = parseGitHostRepository(repositoryUrl, token);
+    if (data === undefined) return false;
+    fillFromQRCodeData(data);
+    setUseStandardGitProtocol(true);
+    setManualEdit(false);
+    return true;
+  }, [fillFromQRCodeData]);
 
   const onManualJSONInput = useCallback((text: string) => {
     try {
@@ -544,6 +539,7 @@ export const Importer: FC<StackScreenProps<RootStackParameterList, 'Importer'>> 
         void fetchWorkspaceInfoFromServer(server);
       }}
       onManualJSONInput={onManualJSONInput}
+      onGitHostRepositorySubmit={onGitHostRepositorySubmit}
       onToggleManualEdit={() => {
         setManualEdit(previous => !previous);
       }}
