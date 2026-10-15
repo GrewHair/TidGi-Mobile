@@ -178,7 +178,7 @@
     "Settings": "Server settings",
     "StandardGitProtocol": "Standard git protocol",
     "UseStandardGitProtocol": "Use standard git protocol",
-    "UseStandardGitProtocolDescription": "Enable to use the standard git HTTP protocol (git-upload-pack / git-receive-pack) instead of TidGi's custom bundle protocol. Use this for GitHub, Gitea, or any host without TidGi Desktop."
+    "UseStandardGitProtocolDescription": "Sync straight with GitHub, Gitea or any Git host instead of TidGi Desktop. Experimental: large wikis may sync slowly or run out of memory on a phone, buyer beware. While a sync runs, don't let other apps change this wiki folder's .git data."
   },
   "EditWorkspace": {
     "Path": "Wiki Path",
@@ -635,7 +635,7 @@
     "Advanced": "Advanced",
     "UseExternalStorage": "Store in external (device-visible) storage",
     "UseStandardGitProtocol": "Use standard Git protocol (GitHub / Gitea)",
-    "UseStandardGitProtocolDescription": "Use standard Git HTTP protocol to sync with any Git host such as GitHub or Gitea. Mobile devices have limited RAM, so large wikis may run out of memory and fail. Leave this off to use TidGi Desktop's bundle protocol, which lets the desktop handle packing."
+    "UseStandardGitProtocolDescription": "Sync straight with GitHub, Gitea or any Git host, no TidGi Desktop needed. The phone downloads only the latest version of the wiki, and edits made on both sides are merged. Experimental: large wikis may sync slowly or run out of memory on a phone, buyer beware. While a sync runs, don't let other apps change this wiki folder's .git data. Leave this off to sync with TidGi Desktop, which does the heavy lifting."
   },
   "ConfirmDelete": "Really want to delete?",
   "ConfirmDeleteDescription": "This operation can't be reverted.",

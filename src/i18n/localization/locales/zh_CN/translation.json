@@ -196,7 +196,7 @@
     "Settings": "服务器设置",
     "StandardGitProtocol": "标准 Git 协议",
     "UseStandardGitProtocol": "使用 Git 默认协议",
-    "UseStandardGitProtocolDescription": "开启后使用标准 Git HTTP 协议（git-upload-pack / git-receive-pack）进行同步，而不是 TidGi 自定义的 Bundle 协议。适用于 GitHub、Gitea 或其他不运行 TidGi Desktop 的服务器。"
+    "UseStandardGitProtocolDescription": "直接与 GitHub、Gitea 或任意 Git 服务同步，而不经过太记桌面端。实验性功能：大型 Wiki 在手机上可能同步缓慢或耗尽内存，请自行斟酌。同步进行时，请勿让其他应用修改此 Wiki 文件夹的 .git 数据。"
   },
   "EditWorkspace": {
     "Path": "Wiki的位置",
@@ -611,7 +611,7 @@
     "Advanced": "高级",
     "UseExternalStorage": "存储到外部（设备可见）存储",
     "UseStandardGitProtocol": "使用标准 Git 协议（GitHub / Gitea）",
-    "UseStandardGitProtocolDescription": "勾选后使用标准 Git HTTP 协议，可向 GitHub、Gitea 等任意 Git 服务同步；但手机内存有限，大型 Wiki 容易因此耗尽内存而失败。不勾选则配合太记桌面端，由桌面端打包传输，无需标准 Git 协议。"
+    "UseStandardGitProtocolDescription": "直接与 GitHub、Gitea 或任意 Git 服务同步，无需太记桌面端。手机只下载 Wiki 的最新版本，两端的修改会自动合并。实验性功能：大型 Wiki 在手机上可能同步缓慢或耗尽内存，请自行斟酌。同步进行时，请勿让其他应用修改此 Wiki 文件夹的 .git 数据。不勾选则配合太记桌面端同步，由桌面端承担繁重工作。"
   },
   "ConfirmDelete": "是否删除？",
   "ConfirmDeleteDescription": "此操作无法撤销。",
