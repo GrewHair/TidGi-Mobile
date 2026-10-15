@@ -41,10 +41,10 @@ index 0cea616..3bc3d4f 100644
  
 diff --git a/work/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt b/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt
 new file mode 100644
-index 0000000..1d7782e
+index 0000000..cbd64a8
 --- /dev/null
 +++ b/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,65 @@
 +package expo.modules.externalstorage
 +
 +import org.eclipse.jgit.internal.storage.file.FileRepository
@@ -87,7 +87,11 @@ index 0000000..1d7782e
 +        val started = System.currentTimeMillis()
 +        gc.setPackConfig(PackConfig(repo))
 +        gc.setPackExpireAgeMillis(0)
-+        gc.gc().get()
++        // GC.gc() would take a PidLock, which calls java.lang.ProcessHandle (not on
++        // Android). Run its steps directly; GitRepositoryLock keeps other calls out.
++        gc.packRefs()
++        gc.repack()
++        gc.prune(emptySet())
 +        val after = gc.statistics
 +        result.put("ok", true)
 +        result.put("ran", true)
