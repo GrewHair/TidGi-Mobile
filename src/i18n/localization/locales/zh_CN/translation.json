@@ -645,6 +645,7 @@
     "HoursAgo": "{{count}} 小时前",
     "DaysAgo": "{{count}} 天前",
     "GitSynchronization": "Git 同步",
+    "TidyingUpLocalCopy": "正在整理本地副本…",
     "LastSync": "上次同步",
     "Error": "错误",
     "Syncing": "同步中",

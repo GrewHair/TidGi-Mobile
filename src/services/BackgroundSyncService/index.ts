@@ -10,6 +10,7 @@ import { AppState } from 'react-native';
 import i18n from '../../i18n';
 import { useConfigStore } from '../../store/config';
 import { IServerInfo, ServerStatus, useServerStore } from '../../store/server';
+import { useSyncActivityStore } from '../../store/syncActivity';
 import { IHtmlWorkspace, IWikiServerSync, IWikiWorkspace, useWorkspaceStore } from '../../store/workspace';
 import {
   getOnlineServerForSyncableWorkspace,
@@ -585,6 +586,9 @@ export class GitBackgroundSyncService {
       headers: headersToJson(remote),
       log: message => {
         workspaceLogger.log(message);
+      },
+      onHousekeeping: running => {
+        useSyncActivityStore.getState().setHousekeeping(workspace.id, running);
       },
     });
   }
