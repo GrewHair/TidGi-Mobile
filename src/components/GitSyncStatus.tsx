@@ -9,6 +9,7 @@ import { View } from 'react-native';
 import { ActivityIndicator, Button, Card, Dialog, Portal, Snackbar, Text } from 'react-native-paper';
 import { styled } from 'styled-components/native';
 import { gitBackgroundSyncService } from '../services/BackgroundSyncService';
+import { useSyncActivityStore } from '../store/syncActivity';
 import { IWikiWorkspace } from '../store/workspace';
 
 const Container = styled(View)`
@@ -60,6 +61,7 @@ export const GitSyncStatus: FC<IGitSyncStatusProps> = ({ workspace }) => {
   const [conflictBranch, _setConflictBranch] = useState<string | null>(null);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const housekeeping = useSyncActivityStore(state => state.housekeeping[workspace.id] === true);
 
   // Get last sync time from workspace
   useEffect(() => {
@@ -137,6 +139,12 @@ export const GitSyncStatus: FC<IGitSyncStatusProps> = ({ workspace }) => {
           </StatusText>
           {syncing && <ActivityIndicator size='small' />}
         </StatusRow>
+
+        {housekeeping && (
+          <StatusRow>
+            <StatusText variant='bodySmall'>{t('Sync.TidyingUpLocalCopy')}</StatusText>
+          </StatusRow>
+        )}
 
         {lastSyncTime !== null && (
           <StatusRow>

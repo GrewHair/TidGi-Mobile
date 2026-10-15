@@ -669,6 +669,7 @@
     "HoursAgo": "{{count}} hours ago",
     "DaysAgo": "{{count}} days ago",
     "GitSynchronization": "Git Synchronization",
+    "TidyingUpLocalCopy": "Tidying up local copy…",
     "LastSync": "Last Sync",
     "Error": "Error",
     "Syncing": "Syncing",

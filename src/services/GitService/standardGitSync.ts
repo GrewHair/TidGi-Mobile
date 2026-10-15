@@ -24,24 +24,42 @@ export interface IStandardGitSyncOptions {
   log: (message: string) => void;
   /** Retries when another device pushes between our fetch and push. */
   maxAttempts?: number;
+  /**
+   * Told when repository housekeeping is under way (true) and done (false), so
+   * the UI can say why this sync takes longer. Only called when it lasts over a
+   * second; the usual "nothing to do" check stays silent.
+   */
+  onHousekeeping?: (running: boolean) => void;
 }
 
 /** Ref kept pointing at the last local commit before a merge rewrote the working tree. */
 export const PRE_SYNC_BACKUP_REF = 'refs/tidgi/pre-sync';
+
+/** Git's own `gc --auto` limits (gc.auto, gc.autoPackLimit). */
+const HOUSEKEEPING_LOOSE_OBJECT_LIMIT = 6700;
+const HOUSEKEEPING_PACK_LIMIT = 50;
+const HOUSEKEEPING_ANNOUNCE_DELAY_MS = 1000;
 
 const PUSH_ACCEPTED = new Set(['OK', 'UP_TO_DATE']);
 const PUSH_RACED = new Set(['REJECTED_NONFASTFORWARD', 'REJECTED_REMOTE_CHANGED']);
 
 /** @returns true when remote changes were brought into the working tree. */
 export async function syncWithStandardGit(workspace: IWikiWorkspace, options: IStandardGitSyncOptions): Promise<boolean> {
-  const { headers, log, maxAttempts = 3 } = options;
   const directory = toPlainPath(workspace.wikiFolderLocation);
+  const haveUpdate = await commitFetchMergePush(workspace, directory, options);
+  await runHousekeeping(directory, options);
+  return haveUpdate;
+}
+
+async function commitFetchMergePush(workspace: IWikiWorkspace, directory: string, options: IStandardGitSyncOptions): Promise<boolean> {
+  const { headers, log, maxAttempts = 3 } = options;
 
   if (await gitHasChanges(workspace)) {
     await gitCommit(workspace, `Mobile sync at ${new Date().toISOString()}`);
     log('Standard git: local changes committed');
   }
   await ensureGitConfigForMobile(directory);
+  await disableBackgroundAutoGc(directory);
   const branch = await getCurrentBranch(directory);
   const trackingReference = `refs/remotes/origin/${branch}`;
 
@@ -87,6 +105,49 @@ export async function syncWithStandardGit(workspace: IWikiWorkspace, options: IS
     log(`Standard git: remote moved during sync (attempt ${attempt}/${maxAttempts}), retrying`);
   }
   throw new Error(`git push kept being rejected after ${maxAttempts} attempts`);
+}
+
+/**
+ * JGit runs auto-gc after every fetch on a background thread, outside the
+ * native repository lock, keeping replaced packs for an hour. Under frequent
+ * syncs that can leave several full copies of the repository on disk, so turn
+ * it off for this repository and run the same housekeeping ourselves after the
+ * sync (runHousekeeping). Only when the native module can do that: otherwise
+ * JGit's own auto-gc stays on.
+ */
+async function disableBackgroundAutoGc(directory: string): Promise<void> {
+  if (ExternalStorage.gitHousekeeping === undefined) return;
+  await ExternalStorage.gitSetConfig(directory, 'gc', null, 'auto', '0');
+  await ExternalStorage.gitSetConfig(directory, 'gc', null, 'autoPackLimit', '0');
+}
+
+/**
+ * `git gc --auto` under the native repository lock, once Git's usual limits
+ * are reached. A failure here never fails the sync: the next one retries.
+ */
+async function runHousekeeping(directory: string, options: IStandardGitSyncOptions): Promise<void> {
+  const { log, onHousekeeping } = options;
+  if (ExternalStorage.gitHousekeeping === undefined) return;
+  const announcement = { shown: false };
+  const announce = setTimeout(() => {
+    announcement.shown = true;
+    onHousekeeping?.(true);
+  }, HOUSEKEEPING_ANNOUNCE_DELAY_MS);
+  try {
+    const result = parseJson<{ ok: boolean; ran?: boolean; error?: string; looseObjects?: number; packFiles?: number; durationMs?: number }>(
+      await ExternalStorage.gitHousekeeping(directory, HOUSEKEEPING_LOOSE_OBJECT_LIMIT, HOUSEKEEPING_PACK_LIMIT),
+    );
+    if (!result.ok) {
+      log(`Standard git: housekeeping failed: ${result.error ?? 'unknown'}`);
+    } else if (result.ran === true) {
+      log(`Standard git: housekeeping repacked ${result.packFiles ?? '?'} packs and ${result.looseObjects ?? '?'} loose objects in ${result.durationMs ?? '?'} ms`);
+    }
+  } catch (error) {
+    log(`Standard git: housekeeping failed: ${(error as Error).message}`);
+  } finally {
+    clearTimeout(announce);
+    if (announcement.shown) onHousekeeping?.(false);
+  }
 }
 
 /**
