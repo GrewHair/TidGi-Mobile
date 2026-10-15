@@ -114,6 +114,12 @@ export async function prepareGitRepositoryContent({
         onProgress,
         { useStandardGitProtocol: true },
       );
+      // Cloned from the cache, so origin points at the cache folder. Point it at
+      // the real remote, as a network clone would, or syncs never leave the phone.
+      const setUrl = JSON.parse(
+        await ExternalStorage.gitSetConfig(toPlainPath(targetDirectory), 'remote', 'origin', 'url', normalizedCloneUrl),
+      ) as { ok: boolean; error?: string };
+      if (!setUrl.ok) throw new Error(`Could not point origin at ${normalizedCloneUrl}: ${setUrl.error ?? 'unknown'}`);
       return;
     } catch (cacheError) {
       console.warn('[WikiImportService] Cache restore failed, falling back to network clone:', (cacheError as Error).message);
