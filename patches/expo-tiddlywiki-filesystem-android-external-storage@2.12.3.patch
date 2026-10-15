@@ -1,5 +1,5 @@
 diff --git a/android/build.gradle b/android/build.gradle
-index 8e882e3dfadd3724ff8bd9e0bf6a2dc9a0910ad1..a229bef16be011ef5dd5febd385eaa95fba82f67 100644
+index 8e882e3..a229bef 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
 @@ -22,6 +22,6 @@ android {
@@ -10,8 +10,104 @@ index 8e882e3dfadd3724ff8bd9e0bf6a2dc9a0910ad1..a229bef16be011ef5dd5febd385eaa95
 +  implementation 'org.eclipse.jgit:org.eclipse.jgit:6.10.1.202505221210-r'
    implementation "com.squareup.okhttp3:okhttp:4.12.0"
  }
+diff --git a/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt b/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt
+index 7bc6fe3..daf3b24 100644
+--- a/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt
++++ b/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt
+@@ -147,6 +147,10 @@ class ExternalStorageModule : Module() {
+       GitHelper.gitReset(gitRootDir, ref, mode)
+     }
+ 
++    AsyncFunction("gitHousekeeping") { gitRootDir: String, looseLimit: Int, packLimit: Int ->
++      GitHelper.gitHousekeeping(gitRootDir, looseLimit, packLimit)
++    }
++
+     AsyncFunction("gitClone") { url: String, directory: String, branch: String?, depth: Int, singleBranch: Boolean, noTags: Boolean, headers: String? ->
+       GitHelper.gitClone(url, directory, branch, depth, singleBranch, noTags, headers)
+     }
+diff --git a/android/src/main/java/expo/modules/externalstorage/GitHelper.kt b/android/src/main/java/expo/modules/externalstorage/GitHelper.kt
+index 0cea616..3bc3d4f 100644
+--- a/android/src/main/java/expo/modules/externalstorage/GitHelper.kt
++++ b/android/src/main/java/expo/modules/externalstorage/GitHelper.kt
+@@ -32,6 +32,9 @@ internal object GitHelper {
+   fun gitReset(gitRootDir: String, ref: String, mode: String): String =
+     GitRepositoryLock.withLock(gitRootDir) { GitLocal.gitReset(gitRootDir, ref, mode) }
+ 
++  fun gitHousekeeping(gitRootDir: String, looseLimit: Int, packLimit: Int): String =
++    GitRepositoryLock.withLock(gitRootDir) { GitMaintenance.gitHousekeeping(gitRootDir, looseLimit, packLimit) }
++
+   fun gitCheckoutChangedFiles(gitRootDir: String, oldOid: String, newOid: String): String =
+     GitRepositoryLock.withLock(gitRootDir) { GitLocal.gitCheckoutChangedFiles(gitRootDir, oldOid, newOid) }
+ 
+diff --git a/work/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt b/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt
+new file mode 100644
+index 0000000..1d7782e
+--- /dev/null
++++ b/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt
+@@ -0,0 +1,61 @@
++package expo.modules.externalstorage
++
++import org.eclipse.jgit.internal.storage.file.FileRepository
++import org.eclipse.jgit.internal.storage.file.GC
++import org.eclipse.jgit.storage.pack.PackConfig
++import org.json.JSONObject
++
++/**
++ * Repository housekeeping (the equivalent of `git gc --auto`).
++ *
++ * JGit already runs auto-gc after every fetch, but on a background thread,
++ * outside [GitRepositoryLock], and it keeps replaced packs for an hour in case
++ * a concurrent reader still has them open. Callers that disable that
++ * (gc.auto=0, gc.autoPackLimit=0) call this at a quiet moment instead: it runs
++ * under the repository lock, so nothing else is reading, and deletes replaced
++ * packs straight away.
++ */
++internal object GitMaintenance {
++
++  /**
++   * Repack and prune when the repository has more than [looseLimit] loose
++   * objects or more than [packLimit] pack files (Git's defaults: 6700 and 50).
++   * Unreachable loose objects younger than gc.pruneExpire (2 weeks) are kept,
++   * as in Git.
++   */
++  fun gitHousekeeping(gitRootDir: String, looseLimit: Int, packLimit: Int): String {
++    val result = JSONObject()
++    try {
++      val repo = GitRepository.openRepo(gitRootDir)
++      try {
++        val gc = GC(repo as FileRepository)
++        val before = gc.statistics
++        result.put("looseObjects", before.numberOfLooseObjects)
++        result.put("packFiles", before.numberOfPackFiles)
++        if (before.numberOfLooseObjects <= looseLimit && before.numberOfPackFiles <= packLimit) {
++          result.put("ok", true)
++          result.put("ran", false)
++          return result.toString()
++        }
++        val started = System.currentTimeMillis()
++        gc.setPackConfig(PackConfig(repo))
++        gc.setPackExpireAgeMillis(0)
++        gc.gc().get()
++        val after = gc.statistics
++        result.put("ok", true)
++        result.put("ran", true)
++        result.put("durationMs", System.currentTimeMillis() - started)
++        result.put("looseObjectsAfter", after.numberOfLooseObjects)
++        result.put("packFilesAfter", after.numberOfPackFiles)
++        android.util.Log.i("GitHousekeeping", "gc: ${before.numberOfPackFiles} packs/${before.numberOfLooseObjects} loose -> ${after.numberOfPackFiles}/${after.numberOfLooseObjects}")
++      } finally {
++        repo.close()
++      }
++    } catch (e: Exception) {
++      result.put("ok", false)
++      result.put("error", e.message ?: "Unknown housekeeping error")
++      android.util.Log.e("GitHousekeeping", "gc failed: ${e.message}", e)
++    }
++    return result.toString()
++  }
++}
 diff --git a/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt b/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
-index c70f061d593109fbb89860c0cca6b8ba896fe551..9a4bea654db4e9617b7e6011e68fe021a5f6e720 100644
+index c70f061..9a4bea6 100644
 --- a/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
 +++ b/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
 @@ -137,6 +137,12 @@ internal object GitNetwork {
@@ -27,3 +123,47 @@ index c70f061d593109fbb89860c0cca6b8ba896fe551..9a4bea654db4e9617b7e6011e68fe021
        GitTransport.applyHeaders(cloneCommand, headers)
  
        val git = cloneCommand.call()
+diff --git a/build/index.d.ts b/build/index.d.ts
+index 3cc582f..c6c4e47 100644
+--- a/build/index.d.ts
++++ b/build/index.d.ts
+@@ -321,6 +321,17 @@ interface IExternalStorageModule {
+      * @returns JSON string: `{"ok":true,"action":"checkout"|"delete"}` or `{"ok":false,"error":"..."}`
+      */
+     gitDiscardFileChanges(gitRootDir: string, filepath: string): Promise<string>;
++
++    /**
++     * Repository housekeeping, like `git gc --auto`: repack and prune when there
++     * are more than `looseLimit` loose objects or more than `packLimit` packs.
++     * Runs under the repository lock and deletes replaced packs immediately, so
++     * callers should disable JGit's background auto-gc (gc.auto=0,
++     * gc.autoPackLimit=0) for the repository. Android only.
++     *
++     * @returns JSON string: `{"ok":true,"ran":true|false,"looseObjects":N,"packFiles":N,...}` or `{"ok":false,"error":"..."}`
++     */
++    gitHousekeeping?(gitRootDir: string, looseLimit: number, packLimit: number): Promise<string>;
+ }
+ export declare const ExternalStorage: IExternalStorageModule;
+ /**
+diff --git a/src/index.ts b/src/index.ts
+index fb2fcf4..f5f642f 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -395,6 +395,17 @@ interface IExternalStorageModule {
+    * @returns JSON string: `{"ok":true,"action":"checkout"|"delete"}` or `{"ok":false,"error":"..."}`
+    */
+   gitDiscardFileChanges(gitRootDir: string, filepath: string): Promise<string>;
++
++  /**
++   * Repository housekeeping, like `git gc --auto`: repack and prune when there
++   * are more than `looseLimit` loose objects or more than `packLimit` packs.
++   * Runs under the repository lock and deletes replaced packs immediately, so
++   * callers should disable JGit's background auto-gc (gc.auto=0,
++   * gc.autoPackLimit=0) for the repository. Android only.
++   *
++   * @returns JSON string: `{"ok":true,"ran":true|false,"looseObjects":N,"packFiles":N,...}` or `{"ok":false,"error":"..."}`
++   */
++  gitHousekeeping?(gitRootDir: string, looseLimit: number, packLimit: number): Promise<string>;
+ }
+ 
+ export const ExternalStorage: IExternalStorageModule = new Proxy({} as IExternalStorageModule, {
