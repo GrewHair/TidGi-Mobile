@@ -196,7 +196,7 @@
     "Settings": "服务器设置",
     "StandardGitProtocol": "标准 Git 协议",
     "UseStandardGitProtocol": "使用 Git 默认协议",
-    "UseStandardGitProtocolDescription": "开启后使用标准 Git HTTP 协议（git-upload-pack / git-receive-pack）进行同步，而不是 TidGi 自定义的 Bundle 协议。适用于 GitHub、Gitea 或其他不运行 TidGi Desktop 的服务器。"
+    "UseStandardGitProtocolDescription": "直接与 GitHub、Gitea 或任意 Git 服务同步，而不经过太记桌面端。实验性功能：大型 Wiki 在手机上可能同步缓慢或耗尽内存，请自行斟酌。同步进行时，请勿让其他应用修改此 Wiki 文件夹的 .git 数据。"
   },
   "EditWorkspace": {
     "Path": "Wiki的位置",
@@ -561,6 +561,13 @@
     "SelectSubWorkspaces": "选择要导入的子工作区",
     "ManualConfiguration": "手动配置（高级）",
     "ManualConfigurationHint": "在下方粘贴完整的二维码 JSON 数据。仅在二维码扫描无法使用时需要。",
+    "ImportFromGitHost": "从 GitHub 或其他 Git 服务导入",
+    "GitHostRepositoryURL": "仓库地址",
+    "GitHostToken": "访问令牌（公开仓库可留空）",
+    "GitHostTokenHint": "在 GitHub 上创建一个细粒度个人访问令牌，仅授予此仓库的“Contents: Read and write”权限。令牌保存在本机。",
+    "GitHostUseRepository": "使用此仓库",
+    "GitHostInvalidRepository": "这看起来不是仓库地址。请尝试 https://github.com/you/your-wiki 或 you/your-wiki。",
+    "GitHostReadyToImport": "✓ 可以导入",
     "FetchFromSavedServerFailed": "从已保存服务器加载工作区配置失败",
     "QRCodeJSON": "二维码 JSON 数据",
     "QRCodeParseError": "无法解析二维码",
@@ -611,7 +618,7 @@
     "Advanced": "高级",
     "UseExternalStorage": "存储到外部（设备可见）存储",
     "UseStandardGitProtocol": "使用标准 Git 协议（GitHub / Gitea）",
-    "UseStandardGitProtocolDescription": "勾选后使用标准 Git HTTP 协议，可向 GitHub、Gitea 等任意 Git 服务同步；但手机内存有限，大型 Wiki 容易因此耗尽内存而失败。不勾选则配合太记桌面端，由桌面端打包传输，无需标准 Git 协议。"
+    "UseStandardGitProtocolDescription": "直接与 GitHub、Gitea 或任意 Git 服务同步，无需太记桌面端。手机只下载 Wiki 的最新版本，两端的修改会自动合并。实验性功能：大型 Wiki 在手机上可能同步缓慢或耗尽内存，请自行斟酌。同步进行时，请勿让其他应用修改此 Wiki 文件夹的 .git 数据。不勾选则配合太记桌面端同步，由桌面端承担繁重工作。"
   },
   "ConfirmDelete": "是否删除？",
   "ConfirmDeleteDescription": "此操作无法撤销。",
@@ -645,6 +652,7 @@
     "HoursAgo": "{{count}} 小时前",
     "DaysAgo": "{{count}} 天前",
     "GitSynchronization": "Git 同步",
+    "TidyingUpLocalCopy": "正在整理本地副本…",
     "LastSync": "上次同步",
     "Error": "错误",
     "Syncing": "同步中",
@@ -731,7 +739,9 @@
     "ToInternal": "迁移到内部存储",
     "Performance": "性能",
     "EnableQuickLoad": "启用目录懒加载",
-    "EnableQuickLoadDescription": "启用后仅加载条目目录，条目内容将在打开条目时才懒加载。关闭后会在打开知识库时一起读取并加载条目文本。"
+    "EnableQuickLoadDescription": "启用后仅加载条目目录，条目内容将在打开条目时才懒加载。关闭后会在打开知识库时一起读取并加载条目文本。",
+    "KeepOnlyRecentHistory": "仅在本机保留近期历史",
+    "KeepOnlyRecentHistoryDescription": "可为大型或附件较多的知识库节省空间。手机在同步后整理本地副本时，会同时删除本机上的旧版本，只保留当前版本。完整历史仍保存在 Git 托管平台（GitHub、Gitea 等）上。"
   },
   "StorageLocation": {
     "PermissionDenied": "需要权限",

@@ -51,6 +51,8 @@ interface IImporterServerConfigsProps {
   manualEdit: boolean;
   onFetchSavedServer: (server: IServerInfo) => void;
   onManualJSONInput: (text: string) => void;
+  /** @returns false when the input is not a repository URL. */
+  onGitHostRepositorySubmit: (repositoryUrl: string, token: string) => boolean;
   onToggleManualEdit: () => void;
   onToggleSavedServers: () => void;
   onToggleScanner: () => void;
@@ -76,6 +78,7 @@ export function ImporterServerConfigs(props: IImporterServerConfigsProps): JSX.E
     manualEdit,
     onFetchSavedServer,
     onManualJSONInput,
+    onGitHostRepositorySubmit,
     onToggleManualEdit,
     onToggleSavedServers,
     onToggleScanner,
@@ -92,6 +95,10 @@ export function ImporterServerConfigs(props: IImporterServerConfigsProps): JSX.E
   } = props;
 
   const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [showGitHostForm, setShowGitHostForm] = React.useState(false);
+  const [gitHostRepositoryUrl, setGitHostRepositoryUrl] = React.useState('');
+  const [gitHostToken, setGitHostToken] = React.useState('');
+  const [gitHostInputInvalid, setGitHostInputInvalid] = React.useState(false);
   const externalStorageGloballyEnabled = customWikiFolderPath !== null;
 
   return (
@@ -108,7 +115,7 @@ export function ImporterServerConfigs(props: IImporterServerConfigsProps): JSX.E
       {qrData && importStatus === 'idle' && (
         <>
           <QRScannedTitle variant='titleMedium'>
-            {t('Import.QRCodeScanned')}
+            {useStandardGitProtocol ? t('Import.GitHostReadyToImport') : t('Import.QRCodeScanned')}
           </QRScannedTitle>
           <QRDetailText variant='bodySmall'>
             {t('Import.Server')}: {qrData.baseUrl}
@@ -139,6 +146,58 @@ export function ImporterServerConfigs(props: IImporterServerConfigsProps): JSX.E
           )}
         </>
       )}
+
+      {!qrData && (
+        <Button
+          testID='toggle-git-host-form-button'
+          mode='text'
+          disabled={importStatus !== 'idle'}
+          onPress={() => {
+            setShowGitHostForm(previous => !previous);
+          }}
+        >
+          <Text>{t('Import.ImportFromGitHost')}</Text>
+        </Button>
+      )}
+
+      <Collapsible collapsed={!showGitHostForm || qrData !== undefined}>
+        <TextInput
+          testID='git-host-repository-input'
+          label={t('Import.GitHostRepositoryURL')}
+          placeholder='https://github.com/you/your-wiki'
+          autoCapitalize='none'
+          autoCorrect={false}
+          keyboardType='url'
+          value={gitHostRepositoryUrl}
+          error={gitHostInputInvalid}
+          onChangeText={text => {
+            setGitHostRepositoryUrl(text);
+            setGitHostInputInvalid(false);
+          }}
+        />
+        {gitHostInputInvalid && <ManualConfigHint variant='bodySmall'>{t('Import.GitHostInvalidRepository')}</ManualConfigHint>}
+        <TextInput
+          testID='git-host-token-input'
+          label={t('Import.GitHostToken')}
+          autoCapitalize='none'
+          autoCorrect={false}
+          secureTextEntry
+          value={gitHostToken}
+          onChangeText={setGitHostToken}
+        />
+        <ManualConfigHint variant='bodySmall'>{t('Import.GitHostTokenHint')}</ManualConfigHint>
+        <StandardGitProtocolHint variant='bodySmall'>{t('Import.UseStandardGitProtocolDescription')}</StandardGitProtocolHint>
+        <Button
+          testID='git-host-use-repository-button'
+          mode='outlined'
+          disabled={importStatus !== 'idle' || gitHostRepositoryUrl.trim() === ''}
+          onPress={() => {
+            setGitHostInputInvalid(!onGitHostRepositorySubmit(gitHostRepositoryUrl, gitHostToken));
+          }}
+        >
+          <Text>{t('Import.GitHostUseRepository')}</Text>
+        </Button>
+      </Collapsible>
 
       {!qrData && (
         <Button

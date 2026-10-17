@@ -178,7 +178,7 @@
     "Settings": "Server settings",
     "StandardGitProtocol": "Standard git protocol",
     "UseStandardGitProtocol": "Use standard git protocol",
-    "UseStandardGitProtocolDescription": "Enable to use the standard git HTTP protocol (git-upload-pack / git-receive-pack) instead of TidGi's custom bundle protocol. Use this for GitHub, Gitea, or any host without TidGi Desktop."
+    "UseStandardGitProtocolDescription": "Sync straight with GitHub, Gitea or any Git host instead of TidGi Desktop. Experimental: large wikis may sync slowly or run out of memory on a phone, buyer beware. While a sync runs, don't let other apps change this wiki folder's .git data."
   },
   "EditWorkspace": {
     "Path": "Wiki Path",
@@ -585,6 +585,13 @@
     "SelectSubWorkspaces": "Select sub-workspaces to import",
     "ManualConfiguration": "Manual Configuration (Advanced)",
     "ManualConfigurationHint": "Paste the complete QR code JSON data below. This is only needed if QR scanning doesn't work.",
+    "ImportFromGitHost": "Import from GitHub or another Git host",
+    "GitHostRepositoryURL": "Repository URL",
+    "GitHostToken": "Access token (leave empty for a public repository)",
+    "GitHostTokenHint": "On GitHub, create a fine-grained personal access token with \"Contents: Read and write\" for this repository only. It is stored on this phone.",
+    "GitHostUseRepository": "Use this repository",
+    "GitHostInvalidRepository": "That doesn't look like a repository URL. Try https://github.com/you/your-wiki or you/your-wiki.",
+    "GitHostReadyToImport": "✓ Ready to import",
     "FetchFromSavedServerFailed": "Failed to load workspace config from saved server",
     "QRCodeJSON": "QR Code JSON Data",
     "QRCodeParseError": "Failed to parse QR code",
@@ -635,7 +642,7 @@
     "Advanced": "Advanced",
     "UseExternalStorage": "Store in external (device-visible) storage",
     "UseStandardGitProtocol": "Use standard Git protocol (GitHub / Gitea)",
-    "UseStandardGitProtocolDescription": "Use standard Git HTTP protocol to sync with any Git host such as GitHub or Gitea. Mobile devices have limited RAM, so large wikis may run out of memory and fail. Leave this off to use TidGi Desktop's bundle protocol, which lets the desktop handle packing."
+    "UseStandardGitProtocolDescription": "Sync straight with GitHub, Gitea or any Git host, no TidGi Desktop needed. The phone downloads only the latest version of the wiki, and edits made on both sides are merged. Experimental: large wikis may sync slowly or run out of memory on a phone, buyer beware. While a sync runs, don't let other apps change this wiki folder's .git data. Leave this off to sync with TidGi Desktop, which does the heavy lifting."
   },
   "ConfirmDelete": "Really want to delete?",
   "ConfirmDeleteDescription": "This operation can't be reverted.",
@@ -669,6 +676,7 @@
     "HoursAgo": "{{count}} hours ago",
     "DaysAgo": "{{count}} days ago",
     "GitSynchronization": "Git Synchronization",
+    "TidyingUpLocalCopy": "Tidying up local copy…",
     "LastSync": "Last Sync",
     "Error": "Error",
     "Syncing": "Syncing",
@@ -742,7 +750,9 @@
     "ToInternal": "to internal storage",
     "Performance": "Performance",
     "EnableQuickLoad": "Enable Directory Lazy Load",
-    "EnableQuickLoadDescription": "When enabled, only tiddler directory metadata is loaded first. Tiddler text content is loaded lazily when opening a tiddler. When disabled, text content is loaded together when opening the wiki."
+    "EnableQuickLoadDescription": "When enabled, only tiddler directory metadata is loaded first. Tiddler text content is loaded lazily when opening a tiddler. When disabled, text content is loaded together when opening the wiki.",
+    "KeepOnlyRecentHistory": "Keep only recent history on this phone",
+    "KeepOnlyRecentHistoryDescription": "Saves storage on large or attachment-heavy wikis. When the phone tidies up its local copy after a sync, it also removes older versions from this phone and keeps only the current one. The full history stays on the Git host (GitHub, Gitea, …)."
   },
   "StorageLocation": {
     "PermissionDenied": "Permission Required",

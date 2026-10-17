@@ -1,0 +1,235 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 8e882e3..a229bef 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -22,6 +22,6 @@ android {
+ 
+ dependencies {
+   coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+-  implementation 'org.eclipse.jgit:org.eclipse.jgit:6.2.0.202206071550-r'
++  implementation 'org.eclipse.jgit:org.eclipse.jgit:6.10.1.202505221210-r'
+   implementation "com.squareup.okhttp3:okhttp:4.12.0"
+ }
+diff --git a/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt b/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt
+index 7bc6fe3..8885ff8 100644
+--- a/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt
++++ b/android/src/main/java/expo/modules/externalstorage/ExternalStorageModule.kt
+@@ -147,6 +147,10 @@ class ExternalStorageModule : Module() {
+       GitHelper.gitReset(gitRootDir, ref, mode)
+     }
+ 
++    AsyncFunction("gitHousekeeping") { gitRootDir: String, looseLimit: Int, packLimit: Int, dropHistory: Boolean ->
++      GitHelper.gitHousekeeping(gitRootDir, looseLimit, packLimit, dropHistory)
++    }
++
+     AsyncFunction("gitClone") { url: String, directory: String, branch: String?, depth: Int, singleBranch: Boolean, noTags: Boolean, headers: String? ->
+       GitHelper.gitClone(url, directory, branch, depth, singleBranch, noTags, headers)
+     }
+diff --git a/android/src/main/java/expo/modules/externalstorage/GitHelper.kt b/android/src/main/java/expo/modules/externalstorage/GitHelper.kt
+index 0cea616..801df07 100644
+--- a/android/src/main/java/expo/modules/externalstorage/GitHelper.kt
++++ b/android/src/main/java/expo/modules/externalstorage/GitHelper.kt
+@@ -32,6 +32,9 @@ internal object GitHelper {
+   fun gitReset(gitRootDir: String, ref: String, mode: String): String =
+     GitRepositoryLock.withLock(gitRootDir) { GitLocal.gitReset(gitRootDir, ref, mode) }
+ 
++  fun gitHousekeeping(gitRootDir: String, looseLimit: Int, packLimit: Int, dropHistory: Boolean): String =
++    GitRepositoryLock.withLock(gitRootDir) { GitMaintenance.gitHousekeeping(gitRootDir, looseLimit, packLimit, dropHistory) }
++
+   fun gitCheckoutChangedFiles(gitRootDir: String, oldOid: String, newOid: String): String =
+     GitRepositoryLock.withLock(gitRootDir) { GitLocal.gitCheckoutChangedFiles(gitRootDir, oldOid, newOid) }
+ 
+diff --git a/work/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt b/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt
+new file mode 100644
+index 0000000..c4fc58c
+--- /dev/null
++++ b/android/src/main/java/expo/modules/externalstorage/GitMaintenance.kt
+@@ -0,0 +1,115 @@
++package expo.modules.externalstorage
++
++import org.eclipse.jgit.api.Git
++import org.eclipse.jgit.internal.storage.file.FileRepository
++import org.eclipse.jgit.internal.storage.file.GC
++import org.eclipse.jgit.lib.Constants
++import org.eclipse.jgit.lib.RefUpdate
++import org.eclipse.jgit.storage.pack.PackConfig
++import org.json.JSONObject
++import java.io.File
++
++/**
++ * Repository housekeeping (the equivalent of `git gc --auto`).
++ *
++ * JGit already runs auto-gc after every fetch, but on a background thread,
++ * outside [GitRepositoryLock], and it keeps replaced packs for an hour in case
++ * a concurrent reader still has them open. Callers that disable that
++ * (gc.auto=0, gc.autoPackLimit=0) call this at a quiet moment instead: it runs
++ * under the repository lock, so nothing else is reading, and deletes replaced
++ * packs straight away.
++ */
++internal object GitMaintenance {
++
++  /**
++   * Repack and prune when the repository has more than [looseLimit] loose
++   * objects or more than [packLimit] pack files (Git's defaults: 6700 and 50).
++   * Unreachable loose objects younger than gc.pruneExpire (2 weeks) are kept,
++   * as in Git.
++   *
++   * With [dropHistory], the repack also drops every commit older than HEAD,
++   * like a fresh `--depth 1` clone, but only when HEAD equals the current
++   * branch's remote-tracking ref and the working tree is clean (otherwise it
++   * repacks as usual and reports `historyDropped: false`). HEAD becomes the
++   * shallow boundary, and what would keep older commits alive goes: reflogs,
++   * ORIG_HEAD, FETCH_HEAD, and refs outside refs/heads, refs/remotes and
++   * refs/tags (such as backup refs).
++   */
++  fun gitHousekeeping(gitRootDir: String, looseLimit: Int, packLimit: Int, dropHistory: Boolean): String {
++    val result = JSONObject()
++    try {
++      val repo = GitRepository.openRepo(gitRootDir)
++      try {
++        val gc = GC(repo as FileRepository)
++        val before = gc.statistics
++        result.put("looseObjects", before.numberOfLooseObjects)
++        result.put("packFiles", before.numberOfPackFiles)
++        if (before.numberOfLooseObjects <= looseLimit && before.numberOfPackFiles <= packLimit) {
++          result.put("ok", true)
++          result.put("ran", false)
++          return result.toString()
++        }
++        val started = System.currentTimeMillis()
++        val historyDropped = dropHistory && prepareHistoryDrop(repo)
++        // A bitmap index left by an earlier repack still covers the dropped
++        // history, and JGit fails remapping it ("Index -1 out of bounds").
++        gc.setPackConfig(PackConfig(repo).apply { if (historyDropped) isBuildBitmaps = false })
++        gc.setPackExpireAgeMillis(0)
++        // GC.gc() would take a PidLock, which calls java.lang.ProcessHandle (not on
++        // Android). Run its steps directly; GitRepositoryLock keeps other calls out.
++        gc.packRefs()
++        gc.repack()
++        gc.prune(emptySet())
++        if (historyDropped) deleteLooseObjects(repo)
++        val after = gc.statistics
++        result.put("ok", true)
++        result.put("ran", true)
++        result.put("historyDropped", historyDropped)
++        result.put("durationMs", System.currentTimeMillis() - started)
++        result.put("looseObjectsAfter", after.numberOfLooseObjects)
++        result.put("packFilesAfter", after.numberOfPackFiles)
++        result.put("packBytesAfter", after.sizeOfPackedObjects)
++        android.util.Log.i("GitHousekeeping", "gc${if (historyDropped) " (history dropped)" else ""}: ${before.numberOfPackFiles} packs/${before.numberOfLooseObjects} loose -> ${after.numberOfPackFiles}/${after.numberOfLooseObjects}")
++      } finally {
++        repo.close()
++      }
++    } catch (e: Exception) {
++      result.put("ok", false)
++      result.put("error", e.message ?: "Unknown housekeeping error")
++      android.util.Log.e("GitHousekeeping", "gc failed: ${e.message}", e)
++    }
++    return result.toString()
++  }
++
++  /** @return false (and changes nothing) unless HEAD equals its remote-tracking ref and nothing is uncommitted. */
++  private fun prepareHistoryDrop(repo: FileRepository): Boolean {
++    val branch = repo.branch ?: return false
++    val head = repo.resolve(Constants.HEAD) ?: return false
++    if (head != repo.resolve("${Constants.R_REMOTES}${Constants.DEFAULT_REMOTE_NAME}/$branch")) return false
++    if (!Git(repo).status().call().isClean) return false
++
++    File(repo.directory, "shallow").writeText("${head.name}\n")
++    for (ref in repo.refDatabase.refs) {
++      val name = ref.name
++      if (ref.isSymbolic || name.startsWith(Constants.R_HEADS) || name.startsWith(Constants.R_REMOTES) || name.startsWith(Constants.R_TAGS)) continue
++      val update = repo.updateRef(name)
++      update.setForceUpdate(true)
++      val outcome = update.delete()
++      if (outcome != RefUpdate.Result.FORCED && outcome != RefUpdate.Result.NO_CHANGE) throw Exception("Could not delete $name: $outcome")
++    }
++    File(repo.directory, "logs").deleteRecursively()
++    File(repo.directory, Constants.ORIG_HEAD).delete()
++    File(repo.directory, Constants.FETCH_HEAD).delete()
++    return true
++  }
++
++  /**
++   * JGit's prune walks past the shallow boundary, so it keeps the dropped
++   * history as loose objects. After the full repack every object still
++   * reachable is in the new pack (and the clean index matches HEAD), so every
++   * loose object is garbage.
++   */
++  private fun deleteLooseObjects(repo: FileRepository) {
++    repo.objectsDirectory.listFiles { file -> file.isDirectory && file.name.length == 2 }?.forEach { it.deleteRecursively() }
++  }
++}
+diff --git a/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt b/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
+index c70f061..9a4bea6 100644
+--- a/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
++++ b/android/src/main/java/expo/modules/externalstorage/GitNetwork.kt
+@@ -137,6 +137,12 @@ internal object GitNetwork {
+         cloneCommand.setNoTags()
+       }
+ 
++      // Shallow clone: only download the newest `depth` commits. Needs JGit >= 6.3.
++      // Keeps the pack small enough for Android's heap on wikis with long histories.
++      if (depth > 0) {
++        cloneCommand.setDepth(depth)
++      }
++
+       GitTransport.applyHeaders(cloneCommand, headers)
+ 
+       val git = cloneCommand.call()
+diff --git a/build/index.d.ts b/build/index.d.ts
+index 3cc582f..2dba799 100644
+--- a/build/index.d.ts
++++ b/build/index.d.ts
+@@ -321,6 +321,23 @@ interface IExternalStorageModule {
+      * @returns JSON string: `{"ok":true,"action":"checkout"|"delete"}` or `{"ok":false,"error":"..."}`
+      */
+     gitDiscardFileChanges(gitRootDir: string, filepath: string): Promise<string>;
++
++    /**
++     * Repository housekeeping, like `git gc --auto`: repack and prune when there
++     * are more than `looseLimit` loose objects or more than `packLimit` packs.
++     * Runs under the repository lock and deletes replaced packs immediately, so
++     * callers should disable JGit's background auto-gc (gc.auto=0,
++     * gc.autoPackLimit=0) for the repository. Android only.
++     *
++     * With `dropHistory`, the repack also drops every commit older than HEAD
++     * (like a fresh `--depth 1` clone), but only when HEAD equals the current
++     * branch's remote-tracking ref and nothing is uncommitted; otherwise it
++     * repacks as usual. Reflogs, ORIG_HEAD, FETCH_HEAD and refs outside
++     * refs/heads, refs/remotes and refs/tags are deleted along with the history.
++     *
++     * @returns JSON string: `{"ok":true,"ran":true|false,"historyDropped":true|false,"looseObjects":N,"packFiles":N,...}` or `{"ok":false,"error":"..."}`
++     */
++    gitHousekeeping?(gitRootDir: string, looseLimit: number, packLimit: number, dropHistory: boolean): Promise<string>;
+ }
+ export declare const ExternalStorage: IExternalStorageModule;
+ /**
+diff --git a/src/index.ts b/src/index.ts
+index fb2fcf4..863d248 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -395,6 +395,23 @@ interface IExternalStorageModule {
+    * @returns JSON string: `{"ok":true,"action":"checkout"|"delete"}` or `{"ok":false,"error":"..."}`
+    */
+   gitDiscardFileChanges(gitRootDir: string, filepath: string): Promise<string>;
++
++  /**
++   * Repository housekeeping, like `git gc --auto`: repack and prune when there
++   * are more than `looseLimit` loose objects or more than `packLimit` packs.
++   * Runs under the repository lock and deletes replaced packs immediately, so
++   * callers should disable JGit's background auto-gc (gc.auto=0,
++   * gc.autoPackLimit=0) for the repository. Android only.
++   *
++   * With `dropHistory`, the repack also drops every commit older than HEAD
++   * (like a fresh `--depth 1` clone), but only when HEAD equals the current
++   * branch's remote-tracking ref and nothing is uncommitted; otherwise it
++   * repacks as usual. Reflogs, ORIG_HEAD, FETCH_HEAD and refs outside
++   * refs/heads, refs/remotes and refs/tags are deleted along with the history.
++   *
++   * @returns JSON string: `{"ok":true,"ran":true|false,"historyDropped":true|false,"looseObjects":N,"packFiles":N,...}` or `{"ok":false,"error":"..."}`
++   */
++  gitHousekeeping?(gitRootDir: string, looseLimit: number, packLimit: number, dropHistory: boolean): Promise<string>;
+ }
+ 
+ export const ExternalStorage: IExternalStorageModule = new Proxy({} as IExternalStorageModule, {
