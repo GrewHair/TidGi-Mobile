@@ -68,7 +68,16 @@ describe('syncWithStandardGit housekeeping', () => {
     await expect(syncWithStandardGit(workspace, { headers: null, log: jest.fn() })).resolves.toBe(false);
     expect(mockExternalStorage.gitSetConfig).toHaveBeenCalledWith('/wikis/w1', 'gc', null, 'auto', '0');
     expect(mockExternalStorage.gitSetConfig).toHaveBeenCalledWith('/wikis/w1', 'gc', null, 'autoPackLimit', '0');
-    expect(mockExternalStorage.gitHousekeeping).toHaveBeenCalledWith('/wikis/w1', 6700, 50);
+    expect(mockExternalStorage.gitHousekeeping).toHaveBeenCalledWith('/wikis/w1', 6700, 50, false);
+  });
+
+  it('asks housekeeping to drop older history when the workspace keeps only recent history', async () => {
+    const log = jest.fn();
+    mockExternalStorage.gitHousekeeping = housekeepingResult({ ok: true, ran: true, historyDropped: true, packFiles: 51, looseObjects: 3, durationMs: 900 });
+    const trimmingWorkspace = { ...workspace, keepOnlyRecentHistory: true } as IWikiWorkspace;
+    await expect(syncWithStandardGit(trimmingWorkspace, { headers: null, log })).resolves.toBe(false);
+    expect(mockExternalStorage.gitHousekeeping).toHaveBeenCalledWith('/wikis/w1', 6700, 50, true);
+    expect(log).toHaveBeenCalledWith('Standard git: housekeeping repacked 51 packs and 3 loose objects, dropping older history in 900 ms');
   });
 
   it('leaves JGit auto-gc alone when the native module has no housekeeping', async () => {
