@@ -750,7 +750,9 @@
     "ToInternal": "to internal storage",
     "Performance": "Performance",
     "EnableQuickLoad": "Enable Directory Lazy Load",
-    "EnableQuickLoadDescription": "When enabled, only tiddler directory metadata is loaded first. Tiddler text content is loaded lazily when opening a tiddler. When disabled, text content is loaded together when opening the wiki."
+    "EnableQuickLoadDescription": "When enabled, only tiddler directory metadata is loaded first. Tiddler text content is loaded lazily when opening a tiddler. When disabled, text content is loaded together when opening the wiki.",
+    "KeepOnlyRecentHistory": "Keep only recent history on this phone",
+    "KeepOnlyRecentHistoryDescription": "Saves storage on large or attachment-heavy wikis. When the phone tidies up its local copy after a sync, it also removes older versions from this phone and keeps only the current one. The full history stays on the Git host (GitHub, Gitea, …)."
   },
   "StorageLocation": {
     "PermissionDenied": "Permission Required",

@@ -21,6 +21,12 @@ export interface IWikiWorkspace {
    */
   enableQuickLoad?: boolean;
   id: string;
+  /**
+   * Standard-Git (GitHub, Gitea, …) workspaces only: let housekeeping drop
+   * commits older than the current one, so the phone keeps only recent history.
+   * The full history stays on the Git host.
+   */
+  keepOnlyRecentHistory?: boolean;
   /** We store the hash to restore view next time. */
   lastLocationHash?: string;
   /**

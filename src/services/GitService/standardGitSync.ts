@@ -47,7 +47,7 @@ const PUSH_RACED = new Set(['REJECTED_NONFASTFORWARD', 'REJECTED_REMOTE_CHANGED'
 export async function syncWithStandardGit(workspace: IWikiWorkspace, options: IStandardGitSyncOptions): Promise<boolean> {
   const directory = toPlainPath(workspace.wikiFolderLocation);
   const haveUpdate = await commitFetchMergePush(workspace, directory, options);
-  await runHousekeeping(directory, options);
+  await runHousekeeping(directory, workspace.keepOnlyRecentHistory === true, options);
   return haveUpdate;
 }
 
@@ -134,9 +134,12 @@ async function disableBackgroundAutoGc(directory: string): Promise<void> {
 
 /**
  * `git gc --auto` under the native repository lock, once Git's usual limits
- * are reached. A failure here never fails the sync: the next one retries.
+ * are reached. With `dropHistory` (the workspace's "keep only recent history"
+ * setting) it also drops commits older than HEAD while in step with the remote,
+ * so history on the phone only reaches back to the last housekeeping.
+ * A failure here never fails the sync: the next one retries.
  */
-async function runHousekeeping(directory: string, options: IStandardGitSyncOptions): Promise<void> {
+async function runHousekeeping(directory: string, dropHistory: boolean, options: IStandardGitSyncOptions): Promise<void> {
   const { log, onHousekeeping } = options;
   if (ExternalStorage.gitHousekeeping === undefined) return;
   const announcement = { shown: false };
@@ -145,13 +148,14 @@ async function runHousekeeping(directory: string, options: IStandardGitSyncOptio
     onHousekeeping?.(true);
   }, HOUSEKEEPING_ANNOUNCE_DELAY_MS);
   try {
-    const result = parseJson<{ ok: boolean; ran?: boolean; error?: string; looseObjects?: number; packFiles?: number; durationMs?: number }>(
-      await ExternalStorage.gitHousekeeping(directory, HOUSEKEEPING_LOOSE_OBJECT_LIMIT, HOUSEKEEPING_PACK_LIMIT),
+    const result = parseJson<{ ok: boolean; ran?: boolean; historyDropped?: boolean; error?: string; looseObjects?: number; packFiles?: number; durationMs?: number }>(
+      await ExternalStorage.gitHousekeeping(directory, HOUSEKEEPING_LOOSE_OBJECT_LIMIT, HOUSEKEEPING_PACK_LIMIT, dropHistory),
     );
     if (!result.ok) {
       log(`Standard git: housekeeping failed: ${result.error ?? 'unknown'}`);
     } else if (result.ran === true) {
-      log(`Standard git: housekeeping repacked ${result.packFiles ?? '?'} packs and ${result.looseObjects ?? '?'} loose objects in ${result.durationMs ?? '?'} ms`);
+      const dropped = result.historyDropped === true ? ', dropping older history' : '';
+      log(`Standard git: housekeeping repacked ${result.packFiles ?? '?'} packs and ${result.looseObjects ?? '?'} loose objects${dropped} in ${result.durationMs ?? '?'} ms`);
     }
   } catch (error) {
     log(`Standard git: housekeeping failed: ${(error as Error).message}`);

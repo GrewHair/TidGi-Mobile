@@ -739,7 +739,9 @@
     "ToInternal": "迁移到内部存储",
     "Performance": "性能",
     "EnableQuickLoad": "启用目录懒加载",
-    "EnableQuickLoadDescription": "启用后仅加载条目目录，条目内容将在打开条目时才懒加载。关闭后会在打开知识库时一起读取并加载条目文本。"
+    "EnableQuickLoadDescription": "启用后仅加载条目目录，条目内容将在打开条目时才懒加载。关闭后会在打开知识库时一起读取并加载条目文本。",
+    "KeepOnlyRecentHistory": "仅在本机保留近期历史",
+    "KeepOnlyRecentHistoryDescription": "可为大型或附件较多的知识库节省空间。手机在同步后整理本地副本时，会同时删除本机上的旧版本，只保留当前版本。完整历史仍保存在 Git 托管平台（GitHub、Gitea 等）上。"
   },
   "StorageLocation": {
     "PermissionDenied": "需要权限",

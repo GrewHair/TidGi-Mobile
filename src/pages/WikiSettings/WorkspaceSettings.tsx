@@ -10,6 +10,7 @@ import { styled } from 'styled-components/native';
 import { useShallow } from 'zustand/react/shallow';
 import { IMigrationProgress, migrateWorkspaceStorage } from '../../services/WikiMigrationService';
 import { ITidgiConfig, readTidgiConfig, writeTidgiConfig } from '../../services/WikiStorageService/tidgiConfigManager';
+import { IServerInfo, useServerStore } from '../../store/server';
 import { IWikiWorkspace, useWorkspaceStore } from '../../store/workspace';
 import { isWikiWorkspace } from '../../utils/workspaceRelations';
 import { useOpenDirectory } from '../Config/Developer/useOpenDirectory';
@@ -62,6 +63,9 @@ export const WorkspaceSettings: FC<IWorkspaceSettingsProps> = ({ workspace }) =>
     useShallow(state => [state.defaultWorkspaceId, state.setDefaultWorkspace, state.customWikiFolderPath, state.update]),
   );
   const isDefault = defaultWorkspaceId === workspace.id;
+  const syncsWithStandardGit = useServerStore(state =>
+    workspace.syncedServers.some(item => (state.servers[item.serverID] as IServerInfo | undefined)?.useStandardGitProtocol === true)
+  );
   const externalStorageEnabled = customWikiFolderPath !== null;
 
   // Migration state
@@ -224,6 +228,21 @@ export const WorkspaceSettings: FC<IWorkspaceSettingsProps> = ({ workspace }) =>
         <StorageHintText variant='bodySmall'>
           {t('WorkspaceSettings.EnableQuickLoadDescription')}
         </StorageHintText>
+        {syncsWithStandardGit && (
+          <>
+            <Checkbox.Item
+              label={t('WorkspaceSettings.KeepOnlyRecentHistory')}
+              status={workspace.keepOnlyRecentHistory === true ? 'checked' : 'unchecked'}
+              onPress={() => {
+                updateWorkspace(workspace.id, { keepOnlyRecentHistory: !(workspace.keepOnlyRecentHistory === true) });
+              }}
+              mode='android'
+            />
+            <StorageHintText variant='bodySmall'>
+              {t('WorkspaceSettings.KeepOnlyRecentHistoryDescription')}
+            </StorageHintText>
+          </>
+        )}
       </Section>
 
       <SaveButton
